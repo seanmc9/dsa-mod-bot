@@ -28,7 +28,7 @@ RANGE_NAME = "Members!A:A"
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
 
 # Sheets lookup
-def check_email(email):
+async def check_email(email):
     # Authorize Google Sheets API... how will the bot handle authenticating?
     creds = None
 
@@ -77,8 +77,8 @@ def check_email(email):
     except HttpError as err:
         print(err)
 
-def is_valid_email(email):
-    if(re.fullmatch(email_regex, email)):
+async def is_valid_email(email):
+    if(regex.fullmatch(email_regex, email)):
         return True
     else:
         return False
