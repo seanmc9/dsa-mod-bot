@@ -20,7 +20,8 @@ from dotenv import load_dotenv # Needed to read .env file
 load_dotenv()
 
 # Settings for Discord
-TOKEN = os.getenv('DISCORD_TOKEN')
+DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
+GUILD_ID = int(os.getenv('GUILD_ID'))
 VALIDATED_ROLE_ID = os.getenv('VALIDATED_ROLE_ID')
 intents = discord.Intents.default()
 intents.members = True
@@ -177,12 +178,11 @@ async def on_message(message):
             author = message.author
             # verify that it is the correct code for the email that the message author is claiming
             if message.content == email_to_sent_code[author_id_to_claimed_email[author.id]]:
-                # TODO: be able to determine which guild to get the role from and add to
-                role = client.get_guild(1249516111125282846).get_role(int(VALIDATED_ROLE_ID))
+                role = client.get_guild(GUILD_ID).get_role(int(VALIDATED_ROLE_ID))
 
                 # Don't add the same role twice
-                if not role in client.get_guild(1249516111125282846).get_member(author.id).roles:
-                    await client.get_guild(1249516111125282846).get_member(author.id).add_roles(role)
+                if not role in client.get_guild(GUILD_ID).get_member(author.id).roles:
+                    await client.get_guild(GUILD_ID).get_member(author.id).add_roles(role)
 
                 await message.channel.send('Membership validated!')
             else:
@@ -200,4 +200,4 @@ async def on_error(event, *args, **kwargs):
         else:
             raise
 
-client.run(TOKEN)
+client.run(DISCORD_TOKEN)
