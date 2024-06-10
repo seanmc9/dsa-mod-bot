@@ -11,6 +11,7 @@ from googleapiclient.errors import HttpError
 
 # Discord imports
 import discord
+
 from dotenv import load_dotenv # Needed to read .env file
 load_dotenv()
 email_regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b'
@@ -18,7 +19,9 @@ email_regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b'
 # Settings for Discord
 TOKEN = os.getenv('DISCORD_TOKEN')
 VALIDATED_ROLE_ID = os.getenv('VALIDATED_ROLE_ID')
-client = discord.Client()
+intents = discord.Intents.default()
+intents.members = True
+client = discord.Client(intents=intents)
 
 # Settings for Sheets
 SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')
@@ -69,7 +72,7 @@ async def check_email(email):
             print("No data found.")
             return
 
-        if email in values:
+        if [email] in values:
             return True
         else:
             return False
@@ -114,14 +117,16 @@ async def on_message(message):
     email_valid = await is_valid_email(message.content)
     if email_valid and isinstance(message.channel, discord.DMChannel):
         validated_member = await check_email(message.content)
+        # TODO: validate that the person owns the email they say they do (probably via emailing a verification code)
         if validated_member:
             # Add member to proper 'validated' role, varies by server            
             author = message.author
-            role = await author.guild.get_role(VALIDATED_ROLE_ID)
+            # TODO: be able to determine which guild to get the role from and add to
+            role = client.get_guild(1249516111125282846).get_role(int(VALIDATED_ROLE_ID))
 
             # Don't add the same role twice
-            if not role in author.roles:                
-                await author.add_roles(role)
+            if not role in client.get_guild(1249516111125282846).get_member(author.id).roles:
+                await client.get_guild(1249516111125282846).get_member(author.id).add_roles(role)
 
             await message.channel.send('Membership validated!')
         else:
