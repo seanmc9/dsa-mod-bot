@@ -1,20 +1,23 @@
 # General imports
-import os, os.path
-import regex
+import os, base64, regex, uuid
 
 # Google Sheets imports
+import google.auth
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+from email.message import EmailMessage
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 # Discord imports
 import discord
 
+# Load .env vars
 from dotenv import load_dotenv # Needed to read .env file
 load_dotenv()
-email_regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b'
 
 # Settings for Discord
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -26,9 +29,54 @@ client = discord.Client(intents=intents)
 # Settings for Sheets
 SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')
 RANGE_NAME = "Members!A:A"
+email_regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b'
+
+# Settings for validation code email
+SENDING_EMAIL = os.getenv('SENDING_EMAIL')
+email_to_sent_code = {}
+author_id_to_claimed_email = {}
 
 # If modifying these scopes, delete the file token.json.
-SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
+SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly', 'https://www.googleapis.com/auth/gmail.send']
+
+async def send_verification_code_email(email_to_validate: str, validation_code_to_send: str):
+  """Create and send an email message
+  Print the returned  message id
+  Returns: Message object, including message id
+
+  Load pre-authorized user credentials from the environment.
+  TODO(developer) - See https://developers.google.com/identity
+  for guides on implementing OAuth2 for the application.
+  """
+  if os.path.exists("token.json"):
+    creds = Credentials.from_authorized_user_file("token.json", SCOPES)
+
+  try:
+    service = build("gmail", "v1", credentials=creds)
+    message = EmailMessage()
+
+    message.set_content(validation_code_to_send)
+
+    message["To"] = email_to_validate
+    message["From"] = SENDING_EMAIL
+    message["Subject"] = "DSA Discord Bot Validation Code"
+
+    # encoded message
+    encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+
+    create_message = {"raw": encoded_message}
+    # pylint: disable=E1101
+    send_message = (
+        service.users()
+        .messages()
+        .send(userId="me", body=create_message)
+        .execute()
+    )
+    print(f'Message Id: {send_message["id"]}')
+  except HttpError as error:
+    print(f"An error occurred: {error}")
+    send_message = None
+  return send_message
 
 # Sheets lookup
 async def check_email(email):
@@ -80,6 +128,9 @@ async def check_email(email):
     except HttpError as err:
         print(err)
 
+async def generate_validation_code():
+    return str(uuid.uuid4())
+
 async def is_valid_email(email):
     if(regex.fullmatch(email_regex, email)):
         return True
@@ -109,28 +160,33 @@ async def on_message(message):
     if message.author == client.user:
         return
 
-    # Checks:
-    # 1. That message is a valid email address, ignore all other messages
-    # 2. That message.channel is the DM channel for the bot and NOT any of the regular server channels.
-    # https://discordpy.readthedocs.io/en/latest/api.html#discord.Message
-    # https://stackoverflow.com/questions/71362604/if-discord-py-bot-gets-dm
-    email_valid = await is_valid_email(message.content)
-    if email_valid and isinstance(message.channel, discord.DMChannel):
-        validated_member = await check_email(message.content)
-        # TODO: validate that the person owns the email they say they do (probably via emailing a verification code)
-        if validated_member:
-            # Add member to proper 'validated' role, varies by server            
+    if isinstance(message.channel, discord.DMChannel):
+        email_valid = await is_valid_email(message.content)
+        if email_valid: # if the message is a valid regex email
+            validated_member = await check_email(message.content) # check that email is in Google Sheet
+            if validated_member:
+                author_id_to_claimed_email[message.author.id] = message.content
+                code = await generate_validation_code()
+                email_to_sent_code[message.content] = code # store the author id in a dict with the email they're claiming
+                validation_code_email = await send_verification_code_email(message.content, code) # send a confirmation code via email to the validating email
+                if validation_code_email:
+                    await message.channel.send('Validation code sent! Please respond here with the code you were sent.')
+            else:
+                await message.channel.send('Sorry, we couldn\'t validate your email as a member in good standing. Please DM a member of the Steering Committee for support')
+        else: # if the message is a validation code
             author = message.author
-            # TODO: be able to determine which guild to get the role from and add to
-            role = client.get_guild(1249516111125282846).get_role(int(VALIDATED_ROLE_ID))
+            # verify that it is the correct code for the email that the message author is claiming
+            if message.content == email_to_sent_code[author_id_to_claimed_email[author.id]]:
+                # TODO: be able to determine which guild to get the role from and add to
+                role = client.get_guild(1249516111125282846).get_role(int(VALIDATED_ROLE_ID))
 
-            # Don't add the same role twice
-            if not role in client.get_guild(1249516111125282846).get_member(author.id).roles:
-                await client.get_guild(1249516111125282846).get_member(author.id).add_roles(role)
+                # Don't add the same role twice
+                if not role in client.get_guild(1249516111125282846).get_member(author.id).roles:
+                    await client.get_guild(1249516111125282846).get_member(author.id).add_roles(role)
 
-            await message.channel.send('Membership validated!')
-        else:
-            await message.channel.send('Sorry, we couldn''t validate your email as a member in good standing. Please DM a member of the Steering Committee for support')
+                await message.channel.send('Membership validated!')
+            else:
+                await message.channel.send('That code is not correct, please try again or DM a member of the Steering Comittee for support.')
 
 @client.event
 async def on_ready():
