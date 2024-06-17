@@ -1,4 +1,4 @@
-# Discord Moderation Bot Template
+# DSA Validation Bot
 
 To connect this bot to your Discord server with the necessary permissions, you'll have to have 
 1. Created an application on Discord
@@ -20,7 +20,7 @@ python3 -m pip install -r requirements.txt
 After that you can start it with
 
 ```
-python3 bot.py
+python3 dsa_bot.py
 ```
 
 ## To Run on an Open Ocean Ubuntu 24.04 (LTS) x64 OS from scratch
@@ -33,5 +33,5 @@ mkdir ~/.virtualenvs
 python3 -m venv ~/.virtualenvs/botenv
 source ~/.virtualenvs/botenv/bin/activate
 pip install -r requirements.txt
-nohup python3 bot.py &
+nohup python3 dsa_bot.py &
 ```
