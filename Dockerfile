@@ -4,4 +4,4 @@ WORKDIR /code
 COPY requirements.txt requirements.txt
 RUN pip install -r requirements.txt
 COPY . .
-CMD ["python3", "dsa_bloc_bot.py"]
+CMD ["python3", "dsa_bot.py"]
